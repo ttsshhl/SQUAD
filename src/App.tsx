@@ -34,16 +34,23 @@ export function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Публичные роуты */}
         <Route path="/login" element={
           <PublicRoute>
             <LoginPage />
           </PublicRoute>
         } />
+        
         <Route path="/register" element={
           <PublicRoute>
             <RegisterPage />
           </PublicRoute>
         } />
+        
+        {/* OAuth callback - НЕ внутри ProtectedRoute */}
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        
+        {/* Защищенные роуты */}
         <Route path="/" element={
           <ProtectedRoute>
             <Layout />
@@ -55,9 +62,9 @@ export function App() {
           <Route path="search" element={<SearchPage />} />
           <Route path="explore" element={<ExplorePage />} />
           <Route path="messages" element={<MessagesPage />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-</Routes>
         </Route>
+        
+        {/* Catch-all route */}
         <Route path="*" element={<Navigate to="/feed" replace />} />
       </Routes>
     </BrowserRouter>
