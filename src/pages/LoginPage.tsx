@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { supabase } from '../lib/supabase';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -21,12 +22,19 @@ export function LoginPage() {
     }
   };
 
-  const handleGoogleLogin = () => {
-    // В реальном приложении здесь будет OAuth через Supabase
-    setError('Вход через Google будет доступен после подключения Supabase');
+  const handleGoogleLogin = async () => {
+    setError('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/feed'
+      }
+    });
+    if (error) {
+      setError('Ошибка входа через Google: ' + error.message);
+    }
   };
 
-  // Demo login
   const handleDemoLogin = () => {
     const user = login('anna@demo.ru', 'demo');
     if (user) {
