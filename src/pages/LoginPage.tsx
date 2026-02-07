@@ -19,6 +19,27 @@ export function LoginPage() {
     });
   }, [navigate]);
 
+  // ✅ Слушаем сообщения от popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Проверяем, что сообщение от нашего домена
+      if (event.origin !== window.location.origin) return;
+      
+      if (event.data.type === 'auth-success') {
+        // Успешная авторизация - переходим на feed
+        navigate('/feed');
+      } else if (event.data.type === 'auth-error') {
+        setError('Ошибка авторизации через Google');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [navigate]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -31,11 +52,75 @@ export function LoginPage() {
     }
   };
 
-  // ✅ POPUP Google OAuth - ИСПРАВЛЕННАЯ ВЕРСИЯ
-  const handleGoogleLogin = async () => {
+  // ✅ ИСПРАВЛЕННАЯ ВЕРСИЯ - popup открывается СРАЗУ
+  const handleGoogleLogin = () => {
     setError('');
 
-    const { data, error } = await supabase.auth.signInWithOAuth({
+    // 1. СНАЧАЛА открываем popup с пустой страницей
+    // Это важно! Popup должен открыться ДО асинхронного запроса
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    // Открываем popup с заглушкой
+    const popup = window.open(
+      'about:blank',
+      'google-oauth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+
+    if (!popup) {
+      setError('Браузер заблокировал popup. Разрешите всплывающие окна для этого сайта.');
+      return;
+    }
+
+    // Показываем загрузку в popup
+    popup.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            body {
+              margin: 0;
+              padding: 0;
+              background: #000;
+              color: #fff;
+              font-family: system-ui, -apple-system, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+            }
+            .loading {
+              text-align: center;
+            }
+            .spinner {
+              border: 3px solid rgba(255, 255, 255, 0.1);
+              border-top: 3px solid #a855f7;
+              border-radius: 50%;
+              width: 40px;
+              height: 40px;
+              animation: spin 1s linear infinite;
+              margin: 0 auto 20px;
+            }
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="loading">
+            <div class="spinner"></div>
+            <p>Подключение к Google...</p>
+          </div>
+        </body>
+      </html>
+    `);
+
+    // 2. ПОТОМ делаем асинхронный запрос
+    supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
@@ -44,51 +129,27 @@ export function LoginPage() {
           prompt: 'consent',
         }
       }
+    }).then(({ data, error }) => {
+      if (error) {
+        popup.close();
+        setError('Ошибка входа через Google: ' + error.message);
+        return;
+      }
+
+      if (!data?.url) {
+        popup.close();
+        setError('Не удалось получить URL авторизации');
+        return;
+      }
+
+      // 3. Перенаправляем уже открытый popup на Google
+      popup.location.href = data.url;
     });
 
-    if (error) {
-      setError('Ошибка входа через Google: ' + error.message);
-      return;
-    }
-
-    if (!data?.url) {
-      setError('Не удалось получить URL авторизации');
-      return;
-    }
-
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
-
-    const popup = window.open(
-      data.url,
-      'google-oauth',
-      `width=${width},height=${height},left=${left},top=${top}`
-    );
-
-    if (!popup) {
-      setError('Браузер заблокировал popup');
-      return;
-    }
-
-    // Слушаем сообщение от popup
-    const handleMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      
-      if (event.data.type === 'auth-success') {
-        window.removeEventListener('message', handleMessage);
-        navigate('/feed');
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    // Проверяем, не закрыл ли пользователь popup
+    // Проверяем, не закрыл ли пользователь popup вручную
     const timer = setInterval(() => {
       if (popup.closed) {
         clearInterval(timer);
-        window.removeEventListener('message', handleMessage);
       }
     }, 500);
   };
