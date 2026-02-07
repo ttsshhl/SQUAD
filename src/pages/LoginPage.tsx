@@ -31,15 +31,18 @@ export function LoginPage() {
     }
   };
 
-  // ✅ POPUP Google OAuth
+  // ✅ POPUP Google OAuth - ИСПРАВЛЕННАЯ ВЕРСИЯ
   const handleGoogleLogin = async () => {
     setError('');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/auth/callback',
-        skipBrowserRedirect: true
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
+        }
       }
     });
 
@@ -49,7 +52,7 @@ export function LoginPage() {
     }
 
     if (!data?.url) {
-      setError('Не удалось получить URL авторизации Google');
+      setError('Не удалось получить URL авторизации');
       return;
     }
 
@@ -69,19 +72,23 @@ export function LoginPage() {
       return;
     }
 
-    // Проверяем появилась ли сессия
-    const timer = setInterval(async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-
-      if (sessionData.session) {
-        clearInterval(timer);
-        popup.close();
+    // Слушаем сообщение от popup
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      
+      if (event.data.type === 'auth-success') {
+        window.removeEventListener('message', handleMessage);
         navigate('/feed');
       }
+    };
 
-      // если пользователь закрыл popup
+    window.addEventListener('message', handleMessage);
+
+    // Проверяем, не закрыл ли пользователь popup
+    const timer = setInterval(() => {
       if (popup.closed) {
         clearInterval(timer);
+        window.removeEventListener('message', handleMessage);
       }
     }, 500);
   };
