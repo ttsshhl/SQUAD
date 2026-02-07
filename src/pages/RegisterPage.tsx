@@ -36,18 +36,45 @@ export function RegisterPage() {
     }
   };
 
-  const handleGoogleRegister = async () => {
-    setError('');
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin + '/feed'
-      }
-    });
-    if (error) {
-      setError('Ошибка регистрации через Google: ' + error.message);
+const handleGoogleRegister = async () => {
+  setError('');
+  
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin + '/feed',
+      skipBrowserRedirect: true
     }
-  };
+  });
+
+  if (error) {
+    setError('Ошибка регистрации через Google: ' + error.message);
+    return;
+  }
+
+  if (data?.url) {
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      data.url,
+      'google-auth',
+      `width=${width},height=${height},left=${left},top=${top},popup=yes`
+    );
+
+    const checkPopup = setInterval(async () => {
+      if (popup?.closed) {
+        clearInterval(checkPopup);
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          navigate('/feed');
+        }
+      }
+    }, 500);
+  }
+};
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
