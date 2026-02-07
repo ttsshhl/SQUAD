@@ -10,7 +10,7 @@ export function LoginPage() {
   const { login } = useStore();
   const navigate = useNavigate();
 
-  // ✅ Проверяем сессию при загрузке страницы
+  // ✅ Если пользователь уже залогинен — сразу на feed
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
@@ -31,20 +31,59 @@ export function LoginPage() {
     }
   };
 
-  // ✅ НОРМАЛЬНЫЙ Google OAuth (redirect)
+  // ✅ POPUP Google OAuth
   const handleGoogleLogin = async () => {
     setError('');
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/feed',
-      },
+        redirectTo: window.location.origin + '/auth/callback',
+        skipBrowserRedirect: true
+      }
     });
 
     if (error) {
       setError('Ошибка входа через Google: ' + error.message);
+      return;
     }
+
+    if (!data?.url) {
+      setError('Не удалось получить URL авторизации Google');
+      return;
+    }
+
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+
+    const popup = window.open(
+      data.url,
+      'google-oauth',
+      `width=${width},height=${height},left=${left},top=${top}`
+    );
+
+    if (!popup) {
+      setError('Браузер заблокировал popup');
+      return;
+    }
+
+    // Проверяем появилась ли сессия
+    const timer = setInterval(async () => {
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      if (sessionData.session) {
+        clearInterval(timer);
+        popup.close();
+        navigate('/feed');
+      }
+
+      // если пользователь закрыл popup
+      if (popup.closed) {
+        clearInterval(timer);
+      }
+    }, 500);
   };
 
   const handleDemoLogin = () => {
@@ -98,22 +137,31 @@ export function LoginPage() {
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold"
+              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold hover:opacity-90 transition-opacity"
             >
               Войти
             </button>
           </form>
 
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-800"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="px-4 bg-gray-900 text-gray-500">или</span>
+            </div>
+          </div>
+
           <button
             onClick={handleGoogleLogin}
-            className="w-full py-3 bg-white text-black rounded-xl font-semibold"
+            className="w-full py-3 bg-white text-black rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors"
           >
             Войти через Google
           </button>
 
           <button
             onClick={handleDemoLogin}
-            className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold"
+            className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition-colors"
           >
             Демо-вход
           </button>
