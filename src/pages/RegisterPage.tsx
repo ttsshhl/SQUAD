@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { supabase } from '../lib/supabase';
 
 export function RegisterPage() {
   const [email, setEmail] = useState('');
@@ -14,7 +15,6 @@ export function RegisterPage() {
     e.preventDefault();
     setError('');
 
-    // Validation
     if (password.length < 6) {
       setError('Пароль должен содержать минимум 6 символов');
       return;
@@ -36,8 +36,17 @@ export function RegisterPage() {
     }
   };
 
-  const handleGoogleRegister = () => {
-    setError('Регистрация через Google будет доступна после подключения Supabase');
+  const handleGoogleRegister = async () => {
+    setError('');
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + '/feed'
+      }
+    });
+    if (error) {
+      setError('Ошибка регистрации через Google: ' + error.message);
+    }
   };
 
   return (
