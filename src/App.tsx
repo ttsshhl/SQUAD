@@ -8,6 +8,7 @@ import { ProfilePage } from './pages/ProfilePage';
 import { SearchPage } from './pages/SearchPage';
 import { ExplorePage } from './pages/ExplorePage';
 import { MessagesPage } from './pages/MessagesPage';
+import { AuthCallback } from './pages/AuthCallback';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { currentUser } = useStore();
@@ -54,6 +55,8 @@ export function App() {
           <Route path="search" element={<SearchPage />} />
           <Route path="explore" element={<ExplorePage />} />
           <Route path="messages" element={<MessagesPage />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+</Routes>
         </Route>
         <Route path="*" element={<Navigate to="/feed" replace />} />
       </Routes>
