@@ -6,27 +6,76 @@ export function AuthCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Получаем токены из URL после редиректа от Google
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) {
-        // Если открыто в popup - закрыть и обновить родительское окно
-        if (window.opener) {
-          window.opener.postMessage({ type: 'auth-success' }, window.location.origin);
-          window.close();
-        } else {
-          // Если не popup (например, прямой переход) - редирект на feed
-          navigate('/feed');
+    const handleCallback = async () => {
+      try {
+        // Получаем сессию после редиректа от Google
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Auth error:', error);
+          
+          // Если открыто в popup - сообщаем родителю об ошибке
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(
+              { type: 'auth-error', error: error.message },
+              window.location.origin
+            );
+            window.close();
+          } else {
+            // Если не popup - редирект на страницу входа
+            navigate('/login');
+          }
+          return;
         }
-      } else {
-        // Если сессии нет - возможно ошибка
-        if (window.opener) {
-          window.opener.postMessage({ type: 'auth-error' }, window.location.origin);
+
+        if (data.session) {
+          console.log('Auth successful, session:', data.session);
+          
+          // Если открыто в popup - сообщаем родителю об успехе
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(
+              { type: 'auth-success' },
+              window.location.origin
+            );
+            
+            // Закрываем popup через небольшую задержку
+            setTimeout(() => {
+              window.close();
+            }, 100);
+          } else {
+            // Если не popup (прямой переход) - редирект на feed
+            navigate('/feed');
+          }
+        } else {
+          // Сессии нет - что-то пошло не так
+          console.log('No session found');
+          
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(
+              { type: 'auth-error', error: 'No session' },
+              window.location.origin
+            );
+            window.close();
+          } else {
+            navigate('/login');
+          }
+        }
+      } catch (err) {
+        console.error('Callback error:', err);
+        
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(
+            { type: 'auth-error', error: 'Unknown error' },
+            window.location.origin
+          );
           window.close();
         } else {
           navigate('/login');
         }
       }
-    });
+    };
+
+    handleCallback();
   }, [navigate]);
 
   return (
@@ -37,7 +86,10 @@ export function AuthCallback() {
             СКВАД
           </div>
         </div>
-        <p className="text-gray-400">Авторизация через Google...</p>
+        <div className="space-y-2">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
+          <p className="text-gray-400">Завершение авторизации...</p>
+        </div>
       </div>
     </div>
   );
