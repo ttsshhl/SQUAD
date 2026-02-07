@@ -24,14 +24,18 @@ export function LoginPage() {
 
 const handleGoogleLogin = async () => {
   setError('');
-  
-  const { data, error } = await supabase.auth.signInWithOAuth({
+
+  const { error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: window.location.origin + '/feed',
-      skipBrowserRedirect: true
+      redirectTo: window.location.origin + '/feed'
     }
   });
+
+  if (error) {
+    setError(error.message);
+  }
+};
 
   if (error) {
     setError('Ошибка входа через Google: ' + error.message);
