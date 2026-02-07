@@ -13,10 +13,17 @@ export function LoginPage() {
 
   // Проверяем, залогинен ли пользователь
   useEffect(() => {
+    let isMounted = true;
+
     const checkUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate('/feed');
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session && isMounted) {
+          console.log('User already logged in, redirecting...');
+          navigate('/feed', { replace: true });
+        }
+      } catch (err) {
+        console.error('Error checking session:', err);
       }
     };
     
@@ -24,40 +31,69 @@ export function LoginPage() {
 
     // Слушаем изменения авторизации
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth event:', event, session);
+      console.log('Auth state changed:', event);
+      
+      if (!isMounted) return;
       
       if (event === 'SIGNED_IN' && session) {
-        // Проверяем, есть ли профиль пользователя
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
+        console.log('User signed in:', session.user.email);
+        
+        try {
+          // Проверяем профиль
+          const { data: existingProfile, error: fetchError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
 
-        // Если профиля нет - создаём
-        if (!profile) {
-          const username = session.user.email?.split('@')[0] || `user_${Date.now()}`;
+          if (fetchError) {
+            console.error('Error fetching profile:', fetchError);
+          }
+
+          // Создаем профиль если его нет
+          if (!existingProfile) {
+            console.log('Creating new profile...');
+            
+            const username = session.user.email?.split('@')[0] || `user_${Date.now()}`;
+            
+            const { error: insertError } = await supabase.from('profiles').insert({
+              id: session.user.id,
+              email: session.user.email,
+              username: username,
+              display_name: 'НоуНейм',
+              avatar_url: session.user.user_metadata?.avatar_url || '',
+              bio: ''
+            });
+
+            if (insertError) {
+              console.error('Error creating profile:', insertError);
+              // Продолжаем даже если ошибка - возможно профиль уже создан
+            } else {
+              console.log('Profile created successfully');
+            }
+          } else {
+            console.log('Profile already exists');
+          }
+
+          // Перенаправляем
+          console.log('Redirecting to /feed...');
+          if (isMounted) {
+            navigate('/feed', { replace: true });
+          }
           
-          const { error: insertError } = await supabase.from('profiles').insert({
-            id: session.user.id,
-            email: session.user.email,
-            username: username,
-            display_name: 'НоуНейм',
-            avatar_url: session.user.user_metadata?.avatar_url || '',
-            bio: ''
-          });
-
-          if (insertError) {
-            console.error('Error creating profile:', insertError);
+        } catch (err) {
+          console.error('Error in auth state change:', err);
+          if (isMounted) {
+            navigate('/feed', { replace: true });
           }
         }
-
-        // Перенаправляем на feed
-        navigate('/feed');
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      isMounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -72,33 +108,45 @@ export function LoginPage() {
     }
   };
 
-  // ✨ РАБОЧАЯ GOOGLE АВТОРИЗАЦИЯ через redirect
   const handleGoogleLogin = async () => {
     try {
       setError('');
       setLoading(true);
 
-      const { error } = await supabase.auth.signInWithOAuth({
+      console.log('Initiating Google OAuth...');
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/auth/callback`,
           queryParams: {
             access_type: 'offline',
-            prompt: 'consent',
-          }
+            prompt: 'select_account',
+          },
+          skipBrowserRedirect: false
         }
       });
 
       if (error) {
+        console.error('OAuth error:', error);
         setError('Ошибка входа через Google: ' + error.message);
+        setLoading(false);
+        return;
+      }
+
+      if (data?.url) {
+        console.log('Redirecting to Google...');
+        // Используем window.location для редиректа
+        window.location.href = data.url;
+      } else {
+        console.error('No redirect URL received');
+        setError('Не удалось получить URL авторизации');
         setLoading(false);
       }
       
-      // Supabase автоматически сделает редирект на Google
-      // После авторизации Google вернет на /auth/callback
     } catch (err) {
-      console.error('Google login error:', err);
-      setError('Произошла ошибка при входе');
+      console.error('Google login exception:', err);
+      setError('Произошла ошибка: ' + (err as Error).message);
       setLoading(false);
     }
   };
@@ -123,8 +171,8 @@ export function LoginPage() {
         <div className="bg-gray-900 rounded-2xl p-6 space-y-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="bg-red-500/10 text-red-500 px-4 py-2 rounded-lg text-sm">
-                {error}
+              <div className="bg-red-500/10 text-red-500 px-4 py-3 rounded-lg text-sm border border-red-500/20">
+                ⚠️ {error}
               </div>
             )}
 
@@ -135,8 +183,9 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
-                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all"
                 required
+                disabled={loading}
               />
             </div>
 
@@ -147,14 +196,16 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500"
+                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all"
                 required
+                disabled={loading}
               />
             </div>
 
             <button
               type="submit"
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold hover:opacity-90 transition-opacity text-white"
+              disabled={loading}
+              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold hover:opacity-90 transition-opacity text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Войти
             </button>
@@ -172,12 +223,12 @@ export function LoginPage() {
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full py-3 bg-white text-black rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-white text-black rounded-xl font-semibold flex items-center justify-center gap-3 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black"></div>
-                <span>Загрузка...</span>
+                <span>Перенаправление на Google...</span>
               </>
             ) : (
               <>
@@ -194,7 +245,8 @@ export function LoginPage() {
 
           <button
             onClick={handleDemoLogin}
-            className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition-colors"
+            disabled={loading}
+            className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Демо-вход
           </button>
