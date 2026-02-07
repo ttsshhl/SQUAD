@@ -52,18 +52,16 @@ export function LoginPage() {
     }
   };
 
-  // ✅ ИСПРАВЛЕННАЯ ВЕРСИЯ - popup открывается СРАЗУ
+  // ✅ ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ - только popup, без редиректа основного окна
   const handleGoogleLogin = () => {
     setError('');
 
-    // 1. СНАЧАЛА открываем popup с пустой страницей
-    // Это важно! Popup должен открыться ДО асинхронного запроса
+    // 1. СНАЧАЛА открываем popup
     const width = 500;
     const height = 600;
     const left = window.screenX + (window.outerWidth - width) / 2;
     const top = window.screenY + (window.outerHeight - height) / 2;
 
-    // Открываем popup с заглушкой
     const popup = window.open(
       'about:blank',
       'google-oauth',
@@ -119,11 +117,12 @@ export function LoginPage() {
       </html>
     `);
 
-    // 2. ПОТОМ делаем асинхронный запрос
+    // 2. Делаем запрос с skipBrowserRedirect: true (чтобы основное окно НЕ редиректилось)
     supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: true, // ✅ ВОТ ЭТО ВАЖНО! Отключаем автоматический редирект
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
@@ -142,7 +141,7 @@ export function LoginPage() {
         return;
       }
 
-      // 3. Перенаправляем уже открытый popup на Google
+      // 3. Перенаправляем ТОЛЬКО popup на Google
       popup.location.href = data.url;
     });
 
