@@ -11,87 +11,61 @@ export function LoginPage() {
   const { login } = useStore();
   const navigate = useNavigate();
 
-  // Проверяем, залогинен ли пользователь
   useEffect(() => {
-    let isMounted = true;
+    let mounted = true;
 
-    const checkUser = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && isMounted) {
-          console.log('User already logged in, redirecting...');
-          navigate('/feed', { replace: true });
-        }
-      } catch (err) {
-        console.error('Error checking session:', err);
+    // Проверяем есть ли уже сессия
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && mounted) {
+        navigate('/feed', { replace: true });
       }
     };
-    
-    checkUser();
 
-    // Слушаем изменения авторизации
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event);
-      
-      if (!isMounted) return;
-      
-      if (event === 'SIGNED_IN' && session) {
-        console.log('User signed in:', session.user.email);
-        
-        try {
-          // Проверяем профиль
-          const { data: existingProfile, error: fetchError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .maybeSingle();
+    checkSession();
 
-          if (fetchError) {
-            console.error('Error fetching profile:', fetchError);
-          }
+    // Слушаем события авторизации
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
 
-          // Создаем профиль если его нет
-          if (!existingProfile) {
-            console.log('Creating new profile...');
-            
-            const username = session.user.email?.split('@')[0] || `user_${Date.now()}`;
-            
-            const { error: insertError } = await supabase.from('profiles').insert({
-              id: session.user.id,
-              email: session.user.email,
-              username: username,
-              display_name: 'НоуНейм',
-              avatar_url: session.user.user_metadata?.avatar_url || '',
-              bio: ''
-            });
+        // Реагируем только на успешный вход
+        if (event === 'SIGNED_IN' && session) {
+          try {
+            // Проверяем существует ли профиль
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('id')
+              .eq('id', session.user.id)
+              .maybeSingle();
 
-            if (insertError) {
-              console.error('Error creating profile:', insertError);
-              // Продолжаем даже если ошибка - возможно профиль уже создан
-            } else {
-              console.log('Profile created successfully');
+            // Создаем профиль если не существует
+            if (!profile) {
+              const username = session.user.email?.split('@')[0] || `user${Date.now()}`;
+              
+              await supabase.from('profiles').insert({
+                id: session.user.id,
+                email: session.user.email,
+                username: username,
+                display_name: 'НоуНейм',
+                avatar_url: session.user.user_metadata?.avatar_url || '',
+                bio: ''
+              });
             }
-          } else {
-            console.log('Profile already exists');
-          }
 
-          // Перенаправляем
-          console.log('Redirecting to /feed...');
-          if (isMounted) {
+            // Перенаправляем на feed
             navigate('/feed', { replace: true });
-          }
-          
-        } catch (err) {
-          console.error('Error in auth state change:', err);
-          if (isMounted) {
+          } catch (error) {
+            console.error('Error creating profile:', error);
+            // Перенаправляем даже при ошибке
             navigate('/feed', { replace: true });
           }
         }
       }
-    });
+    );
 
     return () => {
-      isMounted = false;
+      mounted = false;
       subscription.unsubscribe();
     };
   }, [navigate]);
@@ -113,40 +87,18 @@ export function LoginPage() {
       setError('');
       setLoading(true);
 
-      console.log('Initiating Google OAuth...');
-
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'select_account',
-          },
-          skipBrowserRedirect: false
-        }
+      // Используем signInWithOAuth БЕЗ redirectTo
+      // Supabase сам вернет пользователя на Site URL из настроек
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google'
       });
 
-      if (error) {
-        console.error('OAuth error:', error);
-        setError('Ошибка входа через Google: ' + error.message);
-        setLoading(false);
-        return;
-      }
+      if (error) throw error;
 
-      if (data?.url) {
-        console.log('Redirecting to Google...');
-        // Используем window.location для редиректа
-        window.location.href = data.url;
-      } else {
-        console.error('No redirect URL received');
-        setError('Не удалось получить URL авторизации');
-        setLoading(false);
-      }
-      
-    } catch (err) {
-      console.error('Google login exception:', err);
-      setError('Произошла ошибка: ' + (err as Error).message);
+      // Редирект произойдет автоматически
+    } catch (error: any) {
+      console.error('Google login error:', error);
+      setError(error.message || 'Ошибка входа через Google');
       setLoading(false);
     }
   };
@@ -172,7 +124,7 @@ export function LoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
               <div className="bg-red-500/10 text-red-500 px-4 py-3 rounded-lg text-sm border border-red-500/20">
-                ⚠️ {error}
+                {error}
               </div>
             )}
 
@@ -183,8 +135,7 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
-                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all"
-                required
+                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500"
                 disabled={loading}
               />
             </div>
@@ -196,8 +147,7 @@ export function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500 transition-all"
-                required
+                className="w-full bg-gray-800 rounded-xl px-4 py-3 text-white outline-none focus:ring-2 focus:ring-purple-500"
                 disabled={loading}
               />
             </div>
@@ -205,7 +155,7 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold hover:opacity-90 transition-opacity text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 rounded-xl font-semibold hover:opacity-90 transition-opacity text-white disabled:opacity-50"
             >
               Войти
             </button>
@@ -223,12 +173,12 @@ export function LoginPage() {
           <button
             onClick={handleGoogleLogin}
             disabled={loading}
-            className="w-full py-3 bg-white text-black rounded-xl font-semibold flex items-center justify-center gap-3 hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-white text-black rounded-xl font-semibold flex items-center justify-center gap-3 hover:bg-gray-100 transition-colors disabled:opacity-50"
           >
             {loading ? (
               <>
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black"></div>
-                <span>Перенаправление на Google...</span>
+                <span>Загрузка...</span>
               </>
             ) : (
               <>
@@ -246,7 +196,7 @@ export function LoginPage() {
           <button
             onClick={handleDemoLogin}
             disabled={loading}
-            className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full py-3 bg-gray-800 text-white rounded-xl font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50"
           >
             Демо-вход
           </button>
