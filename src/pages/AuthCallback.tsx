@@ -4,51 +4,40 @@ import { supabase } from '../lib/supabase';
 
 export function AuthCallback() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState('Обработка авторизации...');
+  const [status, setStatus] = useState('Завершаем вход...');
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        setStatus('Получаем данные авторизации...');
+        // Получаем сессию
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        // Получаем сессию после OAuth redirect
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('Session error:', sessionError);
-          setStatus('Ошибка получения сессии. Перенаправление...');
+        if (error) {
+          console.error('Session error:', error);
+          setStatus('Ошибка. Перенаправление...');
           setTimeout(() => navigate('/login'), 2000);
           return;
         }
 
         if (!session) {
-          console.log('No session found');
+          console.log('No session');
           setStatus('Сессия не найдена. Перенаправление...');
           setTimeout(() => navigate('/login'), 2000);
           return;
         }
 
-        setStatus('Проверяем профиль...');
-        
-        // Проверяем, есть ли профиль
-        const { data: profile, error: profileError } = await supabase
+        // Проверяем профиль
+        const { data: profile } = await supabase
           .from('profiles')
-          .select('*')
+          .select('id')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
 
-        // Если ошибка и это не "профиль не найден"
-        if (profileError && profileError.code !== 'PGRST116') {
-          console.error('Profile check error:', profileError);
-        }
-
-        // Если профиля нет - создаём с дефолтными данными
+        // Создаем профиль если не существует
         if (!profile) {
-          setStatus('Создаем профиль...');
+          const username = session.user.email?.split('@')[0] || `user${Date.now()}`;
           
-          const username = session.user.email?.split('@')[0] || `user_${Date.now()}`;
-          
-          const { error: insertError } = await supabase.from('profiles').insert({
+          await supabase.from('profiles').insert({
             id: session.user.id,
             email: session.user.email,
             username: username,
@@ -56,24 +45,16 @@ export function AuthCallback() {
             avatar_url: session.user.user_metadata?.avatar_url || '',
             bio: ''
           });
-
-          if (insertError) {
-            console.error('Error creating profile:', insertError);
-            // Продолжаем даже если есть ошибка создания профиля
-            // возможно профиль уже существует
-          }
         }
 
         setStatus('Успешно! Перенаправление...');
         
-        // Небольшая задержка для показа статуса
-        setTimeout(() => {
-          navigate('/feed');
-        }, 500);
+        // Перенаправляем на feed
+        setTimeout(() => navigate('/feed', { replace: true }), 500);
         
-      } catch (err) {
-        console.error('Callback error:', err);
-        setStatus('Произошла ошибка. Перенаправление...');
+      } catch (error) {
+        console.error('Callback error:', error);
+        setStatus('Ошибка. Перенаправление...');
         setTimeout(() => navigate('/login'), 2000);
       }
     };
@@ -93,9 +74,8 @@ export function AuthCallback() {
         <div className="space-y-6">
           <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-purple-500 border-t-transparent"></div>
           
-          <div className="space-y-2">
+          <div>
             <p className="text-white text-xl font-semibold">{status}</p>
-            <p className="text-gray-500 text-sm">Пожалуйста, подождите</p>
           </div>
         </div>
       </div>
