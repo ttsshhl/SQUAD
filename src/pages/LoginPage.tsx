@@ -12,62 +12,12 @@ export function LoginPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    let mounted = true;
-
-    // Проверяем есть ли уже сессия
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session && mounted) {
+    // Проверяем сессию ОДИН раз при монтировании
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
         navigate('/feed', { replace: true });
       }
-    };
-
-    checkSession();
-
-    // Слушаем события авторизации
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!mounted) return;
-
-        // Реагируем только на успешный вход
-        if (event === 'SIGNED_IN' && session) {
-          try {
-            // Проверяем существует ли профиль
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('id')
-              .eq('id', session.user.id)
-              .maybeSingle();
-
-            // Создаем профиль если не существует
-            if (!profile) {
-              const username = session.user.email?.split('@')[0] || `user${Date.now()}`;
-              
-              await supabase.from('profiles').insert({
-                id: session.user.id,
-                email: session.user.email,
-                username: username,
-                display_name: 'НоуНейм',
-                avatar_url: session.user.user_metadata?.avatar_url || '',
-                bio: ''
-              });
-            }
-
-            // Перенаправляем на feed
-            navigate('/feed', { replace: true });
-          } catch (error) {
-            console.error('Error creating profile:', error);
-            // Перенаправляем даже при ошибке
-            navigate('/feed', { replace: true });
-          }
-        }
-      }
-    );
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
+    });
   }, [navigate]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -87,18 +37,19 @@ export function LoginPage() {
       setError('');
       setLoading(true);
 
-      // Используем signInWithOAuth БЕЗ redirectTo
-      // Supabase сам вернет пользователя на Site URL из настроек
       const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google'
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}`
+        }
       });
 
-      if (error) throw error;
-
-      // Редирект произойдет автоматически
-    } catch (error: any) {
-      console.error('Google login error:', error);
-      setError(error.message || 'Ошибка входа через Google');
+      if (error) {
+        setError(error.message);
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setError(err.message);
       setLoading(false);
     }
   };
