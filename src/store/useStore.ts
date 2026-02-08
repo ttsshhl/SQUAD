@@ -250,7 +250,95 @@ export const useStore = create<AppState>()(
           })
         }));
       },
+import { create } from 'zustand';
+import { supabase } from '../lib/supabase'; // если используете Supabase
 
+interface User {
+  id: string;
+  email: string;
+  username: string;
+  // ... другие поля
+}
+
+interface StoreState {
+  currentUser: User | null;
+  isAuthenticated: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (code: string) => Promise<void>; // НОВАЯ ФУНКЦИЯ
+  logout: () => void;
+  // ... остальные поля
+}
+
+export const useStore = create<StoreState>((set, get) => ({
+  currentUser: null,
+  isAuthenticated: false,
+
+  // Ваши существующие функции...
+  login: async (email: string, password: string) => {
+    // ваша логика
+  },
+
+  register: async (email: string, password: string) => {
+    // ваша логика
+  },
+
+  // НОВАЯ ФУНКЦИЯ - Google OAuth через Supabase
+  loginWithGoogle: async (code: string) => {
+    try {
+      // Обмениваем код на сессию через Supabase
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+      if (error) throw error;
+
+      if (data.session && data.user) {
+        // Проверяем, есть ли профиль пользователя
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          throw profileError;
+        }
+
+        // Если профиля нет - создаём
+        if (!profile) {
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: data.user.id,
+              email: data.user.email,
+              username: data.user.email?.split('@')[0] || 'user',
+              full_name: data.user.user_metadata?.full_name || '',
+              avatar_url: data.user.user_metadata?.avatar_url || '',
+            });
+
+          if (insertError) throw insertError;
+        }
+
+        // Получаем обновлённый профиль
+        const { data: updatedProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single();
+
+        set({
+          currentUser: updatedProfile,
+          isAuthenticated: true,
+        });
+      }
+    } catch (error) {
+      console.error('Google login error:', error);
+      throw error;
+    }
+  },
+
+  logout: () => {
+    set({ currentUser: null, isAuthenticated: false });
+  },
       deletePost: (postId) => {
         set(state => ({
           posts: state.posts.filter(p => p.id !== postId)
