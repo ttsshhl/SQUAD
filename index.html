@@ -2,38 +2,12 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>СКВАД - Социальная сеть</title>
-    
-    <!-- Убираем белое мерцание -->
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-        background-color: #000000;
-        color: #ffffff;
-      }
-      
-      /* Loader */
-      #root:empty::before {
-        content: "";
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 48px;
-        height: 48px;
-        border: 3px solid #a855f7;
-        border-top-color: transparent;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-      }
-      
-      @keyframes spin {
-        to { transform: translate(-50%, -50%) rotate(360deg); }
-      }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <link rel="icon" href="/favicon.ico" />
   </head>
   <body>
     <div id="root"></div>
