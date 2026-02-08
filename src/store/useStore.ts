@@ -250,15 +250,6 @@ export const useStore = create<AppState>()(
           })
         }));
       },
-import { create } from 'zustand';
-import { supabase } from '../lib/supabase'; // если используете Supabase
-
-interface User {
-  id: string;
-  email: string;
-  username: string;
-  // ... другие поля
-}
 
 interface StoreState {
   currentUser: User | null;
